@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Float, REAL, VARCHAR, TEXT
+from sqlalchemy import Column, Integer, VARCHAR, TEXT
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
@@ -22,4 +22,4 @@ class Book(Base):
     rating_dist5 = Column(Integer)
     isbn = Column(VARCHAR)
     rating_dist3 = Column(Integer)
-    rating = Column(REAL)
+    rating = Column(Integer)
