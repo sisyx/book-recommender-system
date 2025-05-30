@@ -7,6 +7,6 @@ class Rating(Base):
     __tablename__ = 'rating'
     
     key = Column(Integer, primary_key=True)
-    id = Column(Integer)
+    user_id = Column(Integer)
     book_id = Column(Integer)
     rating = Column(REAL)
