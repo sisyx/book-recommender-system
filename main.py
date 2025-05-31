@@ -67,6 +67,8 @@ class BookRecommender():
         # Train the model
         self.cf_model.fit(ratings_df[0:10000])
 
+        self.cf_model.save("models/cf.joblib")
+
     def fit_contentbased(self):
         config = ContentBasedConfig()
         self.cb_model = ContentBasedFilter(config)
@@ -74,6 +76,8 @@ class BookRecommender():
         books_df = pd.read_sql(self.session.query(Book).statement, self.session.bind)
 
         self.cb_model.fit(books_df)
+
+        self.cb_model.save("models/cb.joblib")
 
 if __name__=="__main__":
     recommender = BookRecommender()

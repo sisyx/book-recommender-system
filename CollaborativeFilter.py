@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class TrainingConfig:
     """Configuration for collaborative filtering training"""
-    num_features: int = 50  # Reduced complexity
+    num_features: int = 20  # Reduced complexity
     learning_rate: float = 0.001  # Much lower learning rate
     regularization: float = 0.01  # Higher regularization
     max_iterations: int = 1000
@@ -113,6 +113,12 @@ class CollaborativeFilter:
         self.item_biases = np.zeros(n_items)
         self.global_bias = 0.0
 
+    def _rescale_ratings(self, ratings_df: pd.DataFrame):
+        min_rating = ratings_df["rating"].min()
+        max_rating = ratings_df["rating"].max()
+        
+        ratings_df["rating"] = 1- ((max_rating - ratings_df["rating"]) / (max_rating - min_rating + 1))
+
     def _train_val_split(self, ratings_df: pd.DataFrame, ratings_array: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """Split ratings into train and validation sets by selecting 2 items from each of the top 100 users"""
         # 1. Find top 100 users
@@ -166,15 +172,12 @@ class CollaborativeFilter:
     def _sgd_step(self, user_idx: int, item_idx: int, rating: float):
         """Single SGD step for one rating with gradient clipping"""
         # Current prediction
-        # print(f"> user {user_idx} has rated book {item_idx} with {rating}")
         prediction = (
             np.dot(self.user_features[user_idx], self.item_features[item_idx]) +
             self.user_biases[user_idx] +
             self.item_biases[item_idx] +
             self.global_bias
         )
-        # print(f"> we predicted user {user_idx} to rate book {item_idx} with {prediction}")
-        # print()
 
         # Error
         error = rating - prediction
@@ -236,6 +239,9 @@ class CollaborativeFilter:
         """
         logger.info("Starting collaborative filtering training...")
         
+        # Rescale ratings to between 0-1
+        self._rescale_ratings(ratings_df)
+        
         # Create sparse matrix and training data
         ratings_matrix, ratings_array = self._create_sparse_matrix(ratings_df)
 
@@ -247,8 +253,9 @@ class CollaborativeFilter:
         self._initialize_parameters(n_users, n_items)
 
         # Compute global bias
+
+
         self.global_bias = np.mean(ratings_array[:, 2])
-        print(f"gloabal bias is {self.global_bias}")
 
         logger.info(f"Training on {len(train_ratings)} ratings, validating on {len(val_ratings)} ratings")
         logger.info(f"Model complexity: {self.config.num_features} features")
