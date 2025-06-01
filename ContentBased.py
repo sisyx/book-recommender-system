@@ -123,29 +123,39 @@ class ContentBasedFilter:
         else:
             return 4
 
-    def _compute_similarity_batch(self, features_matrix: np.ndarray) -> np.ndarray:
+    def _compute_similarity_batch(self, features_matrix: np.ndarray,
+                                  batch_size: int = 100) -> np.ndarray:
         """
         Compute similarity matrix in batches to handle memory efficiently
         """
 
         n_items = features_matrix.shape[0]
 
-        if self.config.similarity_metric == "cosine":
-            # Cosine similarity is more efficient for sparse data
-            similarity_matrix = cosine_similarity(features_matrix)
+        batch_start = 0
+        batch_end = batch_size
+        current_batch = features_matrix[batch_start:batch_end]
+        n_batches = int(n_items/batch_size)
 
-        else:
-            # For other metrics, use pairwise_distances
-            if self.config.similarity_metric == "euclidean":
-                distances = pairwise_distances(features_matrix, metric='euclidean')
-            elif self.config.similarity_metric == "hamming":
-                distances = pairwise_distances(features_matrix, metric='hamming')
+        for batch in range(n_batches):
+            if self.config.similarity_metric == "cosine":
+                # Cosine similarity is more efficient for sparse data
+                similarity_matrix = cosine_similarity(current_batch, features_matrix)
+
             else:
-                raise ValueError(f"Unsupported similarity metric: {self.config.similarity_metric}")
-            
-            # Convert distances to similarities
-            similarity_matrix = 1 / (1 + distances)
-        
+                # For other metrics, use pairwise_distances
+                if self.config.similarity_metric == "euclidean":
+                    distances = pairwise_distances(current_batch, features_matrix, metric='euclidean')
+                elif self.config.similarity_metric == "hamming":
+                    distances = pairwise_distances(current_batch, features_matrix, metric='hamming')
+                else:
+                    raise ValueError(f"Unsupported similarity metric: {self.config.similarity_metric}")
+
+                # Convert distances to similarities
+                similarity_matrix = 1 / (1 + distances)
+            batch_start = batch_end
+            batch_end += batch_size
+            current_batch = features_matrix[batch_start:batch_end]
+
         return similarity_matrix
 
     def _create_sparse_similarity_matrix(self, similarity_matrix: np.ndarray) -> Dict[int, List[Tuple[int, float]]]:

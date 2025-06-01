@@ -239,9 +239,13 @@ class CollaborativeFilter:
         """
         logger.info("Starting collaborative filtering training...")
         
+        logger.info(ratings_df.head())
+
         # Rescale ratings to between 0-1
         self._rescale_ratings(ratings_df)
         
+        print(ratings_df.info())
+
         # Create sparse matrix and training data
         ratings_matrix, ratings_array = self._create_sparse_matrix(ratings_df)
 
