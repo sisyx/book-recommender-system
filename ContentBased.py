@@ -6,6 +6,8 @@ from scipy.sparse import csr_matrix
 from typing import Dict, List, Tuple, Optional, Union
 import logging
 from dataclasses import dataclass
+import joblib
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -13,9 +15,9 @@ logger = logging.getLogger(__name__)
 class ContentBasedConfig:
     similarity_metric: str = "cosine"  # cosine, euclidean, hamming
     top_k_similar: int = 10
-    similarity_threshold: float = 0.1
+    similarity_threshold: float = 0.4
     batch_size: int = 1000
-    use_sparse: bool = True
+    # use_sparse: bool = True
     scaler_type: str = "minmax"  # minmax, standard, none
 
 
@@ -49,14 +51,17 @@ class ContentBasedFilter:
         """
         logger.info("Preparing content-based features...")
 
+
         # Create a copy to avoid modifying original
         df: pd.DataFrame = books_df.copy()
+
+        logger.info(df.head())
 
         # handle missing values
         df = df.fillna(0)
 
         # Separate numerical and categorical features
-        numerical_cols = ['rating', 'publish_year']
+        numerical_cols = ['rating', 'publish_year', 'counts_of_review']
         categorical_cols = ['language']
 
         # Keep ID column separate
@@ -124,22 +129,22 @@ class ContentBasedFilter:
             return 4
 
     def _compute_similarity_batch(self, features_matrix: np.ndarray,
-                                  batch_size: int = 100) -> np.ndarray:
+                                  batch_size: int = 1000) -> Dict[int, List[Tuple[int, float]]]:
         """
-        Compute similarity matrix in batches to handle memory efficiently
+        Compute Sparse similarity matrix in batches to handle memory efficiently
         """
 
         n_items = features_matrix.shape[0]
+        similarities = {}
 
-        batch_start = 0
-        batch_end = batch_size
-        current_batch = features_matrix[batch_start:batch_end]
-        n_batches = int(n_items/batch_size)
+        for idx in range(0, n_items, batch_size):
+            end_idx = min(idx + batch_size, n_items)
+            current_batch = features_matrix[idx:end_idx]
+            logger.info(f"processing items {idx}:{end_idx}")
 
-        for batch in range(n_batches):
             if self.config.similarity_metric == "cosine":
                 # Cosine similarity is more efficient for sparse data
-                similarity_matrix = cosine_similarity(current_batch, features_matrix)
+                batch_similarity = cosine_similarity(current_batch, features_matrix)
 
             else:
                 # For other metrics, use pairwise_distances
@@ -151,58 +156,47 @@ class ContentBasedFilter:
                     raise ValueError(f"Unsupported similarity metric: {self.config.similarity_metric}")
 
                 # Convert distances to similarities
-                similarity_matrix = 1 / (1 + distances)
-            batch_start = batch_end
-            batch_end += batch_size
-            current_batch = features_matrix[batch_start:batch_end]
+                batch_similarity = 1 / (1 + distances)
 
-        return similarity_matrix
+            for local_idx, global_idx in enumerate(range(idx, end_idx)):
+                item_id = self.idx_to_item[global_idx]
+                similarities[item_id] = self._extract_top_k_similarities(
+                    batch_similarity[local_idx], global_idx
+                )
 
-    def _create_sparse_similarity_matrix(self, similarity_matrix: np.ndarray) -> Dict[int, List[Tuple[int, float]]]:
-        """
-        Create sparse representation keeping only top-k similar items above threshold
-        """
-        logger.info("Creating sparse similarity matrix...")
+
+        return similarities
+
+    def _extract_top_k_similarities(self, similarity_row: np.ndarray, item_idx: int) -> List[Tuple[int, float]]:
+        """Extract top-k similarities from a similarity row"""
+        # Remove self-similarity
+        similarity_row[item_idx] = 0
         
-        sparse_similarities = {}
-        n_items = similarity_matrix.shape[0]
+        # Find items above threshold
+        above_threshold = similarity_row >= self.config.similarity_threshold
+        candidate_indices = np.where(above_threshold)[0]
+        candidate_scores = similarity_row[above_threshold]
         
-        for i in range(n_items):
-            # Get similarities for item i
-            similarities = similarity_matrix[i]
-            
-            # Remove self-similarity
-            similarities[i] = 0
-            
-            # Find items above threshold
-            above_threshold = similarities >= self.config.similarity_threshold
-            candidate_indices = np.where(above_threshold)[0]
-            candidate_scores = similarities[above_threshold]
-            
-            if len(candidate_indices) > 0:
-                # Keep only top-k
-                if len(candidate_indices) > self.config.top_k_similar:
-                    top_k_indices = np.argsort(candidate_scores)[-self.config.top_k_similar:][::-1]
-                    final_indices = candidate_indices[top_k_indices]
-                    final_scores = candidate_scores[top_k_indices]
-                else:
-                    # Sort by similarity score
-                    sort_indices = np.argsort(candidate_scores)[::-1]
-                    final_indices = candidate_indices[sort_indices]
-                    final_scores = candidate_scores[sort_indices]
-                
-                # Convert to original item IDs
-                item_id = self.idx_to_item[i]
-                similar_items = []
-                for idx, score in zip(final_indices, final_scores):
-                    similar_item_id = self.idx_to_item[idx]
-                    similar_items.append((similar_item_id, float(score)))
-                
-                sparse_similarities[item_id] = similar_items
-            else:
-                sparse_similarities[item_id] = []
+        if len(candidate_indices) == 0:
+            return []
         
-        return sparse_similarities
+        # Keep only top-k
+        if len(candidate_indices) > self.config.top_k_similar:
+            top_k_indices = np.argsort(candidate_scores)[-self.config.top_k_similar:][::-1]
+            final_indices = candidate_indices[top_k_indices]
+            final_scores = candidate_scores[top_k_indices]
+        else:
+            sort_indices = np.argsort(candidate_scores)[::-1]
+            final_indices = candidate_indices[sort_indices]
+            final_scores = candidate_scores[sort_indices]
+        
+        # Convert to item IDs
+        result = []
+        for idx, score in zip(final_indices, final_scores):
+            similar_item_id = self.idx_to_item[idx]
+            result.append((similar_item_id, float(score)))
+        
+        return result
 
     def fit(self, books_df: pd.DataFrame):
         """
@@ -223,14 +217,9 @@ class ContentBasedFilter:
         feature_columns = [col for col in self.features_df.columns if col != 'id']
         features_matrix = self.features_df[feature_columns].values
         
-        logger.info(f"Feature matrix shape: {features_matrix.shape}")
-
-        # Compute similarity matrix
+        # Compute sparse similarity matrix
         logger.info("Computing similarity matrix...")
-        full_similarity_matrix = self._compute_similarity_batch(features_matrix)
-
-        # Create sparse representation
-        self.similarity_matrix = self._create_sparse_similarity_matrix(full_similarity_matrix)
+        self.similarity_matrix = self._compute_similarity_batch(features_matrix, batch_size=1000)
 
         self.is_fitted = True
         logger.info(f"Content-based model trained with {len(self.similarity_matrix)} items")

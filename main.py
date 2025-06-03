@@ -37,8 +37,6 @@ class BookRecommender():
         # Load ratings data (fix the column name issue)
         ratings_df = pd.read_csv("dataset/ratings.csv")
 
-        logger.info(ratings_df.head())
-
         # Train the model
 
         self.cf_model.fit(ratings_df)
@@ -49,7 +47,7 @@ class BookRecommender():
         config = ContentBasedConfig()
         self.cb_model = ContentBasedFilter(config)
         
-        books_df = pd.read_csv("dataset/ratings.csv")
+        books_df = pd.read_csv("dataset/books.csv")
 
         self.cb_model.fit(books_df)
 
@@ -59,11 +57,11 @@ if __name__=="__main__":
     recommender = BookRecommender()
     recommender.fit()
 
-    prediction = recommender.cf_model.predict(user_id=1, item_id=1316509)
+    # prediction = recommender.cf_model.predict(user_id=1, item_id=1316509)
     
     # Get recommendations
-    recommendations = recommender.cf_model.recommend_for_user(user_id=123, n_recommendations=10)
+    # recommendations = recommender.cf_model.recommend_for_user(user_id=123, n_recommendations=10)
     
-    print("Collaborative filtering implementation is ready!")
+    # print("Collaborative filtering implementation is ready!")
 
-    print(recommendations)
+    # print(recommendations)

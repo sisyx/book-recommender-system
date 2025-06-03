@@ -239,8 +239,6 @@ class CollaborativeFilter:
         """
         logger.info("Starting collaborative filtering training...")
         
-        logger.info(ratings_df.head())
-
         # Rescale ratings to between 0-1
         self._rescale_ratings(ratings_df)
         
