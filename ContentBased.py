@@ -19,6 +19,7 @@ class ContentBasedConfig:
     batch_size: int = 1000
     # use_sparse: bool = True
     scaler_type: str = "minmax"  # minmax, standard, none
+    save_path: str = "models/cb.joblib"
 
 
 class ContentBasedFilter:
@@ -249,10 +250,12 @@ class ContentBasedFilter:
         
         return similar_items
 
-    def save(self, filepath: str):
+    def save(self):
         """Save the trained model"""
         if not self.is_fitted:
             raise ValueError("Model must be fitted before saving")
+
+        filepath: str = self.config.save_path
         
         model_data = {
             'config': self.config,
@@ -266,11 +269,12 @@ class ContentBasedFilter:
         joblib.dump(model_data, filepath)
         logger.info(f"Model saved to {filepath}")
 
-    def load_model(self, filepath: str):
+    def load_model(self):
         """Load a trained model"""
+        filepath: str = self.config.save_path
+
         if not os.path.exists(filepath):
             raise FileNotFoundError(f"Model file not found: {filepath}")
-        
         model_data = joblib.load(filepath)
         
         self.config = model_data['config']
@@ -281,6 +285,21 @@ class ContentBasedFilter:
         self.is_fitted = model_data['is_fitted']
         
         logger.info(f"Model loaded from {filepath}")
+    
+    def _get_book_id(self, book_name: str, books_df: pd.DataFrame) -> int:
+        normalized_name = book_name.strip().lower()
+        books_df['normalized_name'] = books_df['name'].str.strip().str.lower()
+        
+        exact_matches = books_df[books_df['normalized_name'] == normalized_name]
+        
+        if len(exact_matches) >= 1:
+            return exact_matches.iloc[0]['id']
+    
+    def _get_book_name(self, book_id: str, books_df: pd.DataFrame) -> int:
+        matches = books_df[books_df['id'] == book_id]
+        
+        if len(matches) >= 1:
+            return matches.iloc[0]['name']
 
     
     # def recommend_based_on_profile(self, user_profile: List[Tuple[int, float]], 

@@ -27,6 +27,7 @@ class TrainingConfig:
     min_improvement: float = 1e-4
     learning_rate_decay: float = 0.95  # Learning rate decay
     decay_every: int = 50  # Decay every 50 epochs
+    save_path: str = "models/cf.joblib"
 
 class CollaborativeFilter:
     """
@@ -333,9 +334,11 @@ class CollaborativeFilter:
         Returns:
             Predicted rating
         """
+        logger.info(f"Loading Model From {self.config.save_path}")
+        self.load_model()
         if not self.is_fitted:
-            raise ValueError("Model must be fitted before making predictions")
-        
+            logger.info("No trained models found. please train the model first!")
+
         # Check if user/item exist in training data
         if user_id not in self.user_to_idx or item_id not in self.item_to_idx:
             return self.global_bias  # Return global average for unknown users/items
@@ -392,6 +395,62 @@ class CollaborativeFilter:
         # Sort by predicted rating and return top-N
         predictions.sort(key=lambda x: x[1], reverse=True)
         return predictions[:n_recommendations]
+
+    def recommend_for_user__book_name(
+        self, 
+        user_id: int, 
+        books_df: pd.DataFrame, 
+        n_recommendations: int = 10, 
+        exclude_rated: bool = True, 
+        ratings_df: Optional[pd.DataFrame] = None
+    ) -> List[str]:
+        """
+        Get recommendations for a user with book names instead of IDs.
+        
+        Args:
+            user_id: ID of the user to get recommendations for
+            books_df: DataFrame containing book information with 'id' and 'name' columns
+            n_recommendations: Number of recommendations to return
+            exclude_rated: Whether to exclude books the user has already rated
+            ratings_df: DataFrame containing user ratings (required if exclude_rated=True)
+            
+        Returns:
+            List of tuples (book_name, score) ordered by recommendation score
+        """
+        if not self.is_fitted:
+            logger.info(f"Model not fitted. loading saved models from {self.config.save_path}")
+            self.load_model()
+            
+            if not self.is_fitted:
+                logger.info(f"Failed to load a model {self.config.save_path}, aborting...")
+                return
+
+        if exclude_rated and ratings_df is None:
+            raise ValueError("ratings_df must be provided when exclude_rated=True")
+        
+        # Get raw recommendations (list of (book_id, score) tuples)
+        raw_recommendations = self.recommend_for_user(
+            user_id=user_id,
+            n_recommendations=n_recommendations,
+            exclude_rated=exclude_rated,
+            ratings_df=ratings_df
+        )
+        
+        # Create mapping from book_id to book_name
+        id_to_name = books_df.set_index('id')['name'].to_dict()
+        
+        # Convert to book names
+        recommendations_with_names = []
+        for book_id, _ in raw_recommendations:
+            try:
+                book_name = id_to_name[book_id]
+                recommendations_with_names.append(book_name)
+            except KeyError:
+                logger.warning(f"Book ID {book_id} not found in books_df")
+                continue
+        
+        return recommendations_with_names
+
     
     def get_training_history(self) -> Dict[str, List[float]]:
         """Get training history"""
@@ -401,8 +460,10 @@ class CollaborativeFilter:
             'learning_rates': self.learning_rates
         }
 
-    def save(self, filepath: str):
+    def save(self):
         """Save the trained model"""
+        filepath: str = self.config.save_path
+        
         if not self.is_fitted:
             raise ValueError("Model must be fitted before saving")
 
@@ -424,8 +485,10 @@ class CollaborativeFilter:
         joblib.dump(model_data, filepath)
         logger.info(f"Model saved to {filepath}")
 
-    def load_model(self, filepath: str):
+    def load_model(self):
         """Load a trained model"""
+        filepath: str = self.config.save_path
+
         if not os.path.exists(filepath):
             raise FileNotFoundError(f"Model file not found: {filepath}")
 
