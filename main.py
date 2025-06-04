@@ -9,10 +9,6 @@ from sklearn.metrics.pairwise import pairwise_distances
 # import garbage collection for memory effiency
 import gc
 
-# import utility functions
-from utils.utils import get_period_index
-from utils.progressline import progress_bar
-
 from CollaborativeFilter import CollaborativeFilter, TrainingConfig
 from ContentBased import ContentBasedConfig, ContentBasedFilter
 from dataclasses import dataclass
