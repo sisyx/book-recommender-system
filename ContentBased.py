@@ -40,29 +40,111 @@ class ContentBasedFilter:
         else:
             self.scaler = None
 
+    # def _prepare_features(self, books_df: pd.DataFrame) -> pd.DataFrame:
+    #     """
+    #     prepare and encode features for similarity computation
+
+    #     Args:
+    #         books_df: dataframe with book features
+
+    #     Returns:
+    #         Processes features dataframe
+    #     """
+    #     logger.info("Preparing content-based features...")
+
+
+    #     # Create a copy to avoid modifying original
+    #     df: pd.DataFrame = books_df.copy()
+
+    #     logger.info(df.head())
+
+    #     # handle missing values
+    #     df = df.fillna(0)
+
+    #     # Separate numerical and categorical features
+    #     numerical_cols = ['rating', 'publish_year', 'counts_of_review', "rating_dist_total"]
+    #     categorical_cols = ['language']
+
+    #     # Keep ID column separate
+    #     item_ids = df["id"].copy()
+    #     df_features = df.drop(columns=["id"])
+
+    #     processed_features = []
+    #     feature_names = []
+
+    #     # Process numerical features
+
+    #     for col in numerical_cols:
+    #         if col in df_features.columns:
+    #             if col == "publish_year":
+    #                 df_features[f"{col}_period"] = df_features[col].apply(self._get_period_index)
+    #                 # One-hot encode periods
+    #                 period_encoded = pd.get_dummies(df_features[f'{col}_period'], prefix='period')
+    #                 processed_features.append(period_encoded)
+    #                 feature_names.extend(period_encoded.columns.tolist())
+    #             else:
+    #                 # Scale numerical features
+    #                 feature_data = df_features[[col]].values
+    #                 if self.scaler is not None:
+    #                     if not hasattr(self.scaler, 'scale_'):  # Not fitted yet
+    #                         feature_data = self.scaler.fit_transform(feature_data)
+    #                     else:
+    #                         feature_data = self.scaler.transform(feature_data)
+                    
+    #                 feature_df = pd.DataFrame(feature_data, columns=[col], index=df_features.index)
+    #                 processed_features.append(feature_df)
+    #                 feature_names.append(col)
+
+            
+    #     # Process categorical features
+    #     for col in categorical_cols:
+    #         if col in df_features.columns:
+    #             encoded = pd.get_dummies(df_features[col], prefix=col)
+    #             processed_features.append(encoded)
+    #             feature_names.extend(encoded.columns.tolist())
+        
+
+    #     # Combine all features
+    #     if processed_features:
+    #         final_features = pd.concat(processed_features, axis=1)
+    #         final_features['id'] = item_ids
+    #     else:
+    #         logger.warning("No features found to process")
+    #         final_features = pd.DataFrame({'id': item_ids})
+
+    #     logger.info(f"Processed {len(final_features.columns)-1} features for {len(final_features)} items")
+    #     return final_features
+    
+
     def _prepare_features(self, books_df: pd.DataFrame) -> pd.DataFrame:
         """
-        prepare and encode features for similarity computation
+        prepare and encode features for similarity computation with feature weighting
 
         Args:
             books_df: dataframe with book features
 
         Returns:
-            Processes features dataframe
+            Processes features dataframe with weighted features
         """
         logger.info("Preparing content-based features...")
 
+        # Define feature weights (higher = more important)
+        self.feature_weights = {
+            'rating': 5.0,           # Most important
+            'publish_year': 3.5,      # Base weight
+            'rating_dist_total': 3, # Very important  
+            'counts_of_review': 3,  # Moderately important
+            'language': 1           # Less important
+        }
 
         # Create a copy to avoid modifying original
         df: pd.DataFrame = books_df.copy()
-
-        logger.info(df.head())
 
         # handle missing values
         df = df.fillna(0)
 
         # Separate numerical and categorical features
-        numerical_cols = ['rating', 'publish_year', 'counts_of_review']
+        numerical_cols = ['rating', 'publish_year', 'counts_of_review', "rating_dist_total"]
         categorical_cols = ['language']
 
         # Keep ID column separate
@@ -73,13 +155,18 @@ class ContentBasedFilter:
         feature_names = []
 
         # Process numerical features
-
         for col in numerical_cols:
             if col in df_features.columns:
+                weight = self.feature_weights.get(col, 1.0)
+                
                 if col == "publish_year":
                     df_features[f"{col}_period"] = df_features[col].apply(self._get_period_index)
                     # One-hot encode periods
                     period_encoded = pd.get_dummies(df_features[f'{col}_period'], prefix='period')
+                    
+                    # Apply weight to period features
+                    period_encoded = period_encoded * weight
+                    
                     processed_features.append(period_encoded)
                     feature_names.extend(period_encoded.columns.tolist())
                 else:
@@ -91,18 +178,25 @@ class ContentBasedFilter:
                         else:
                             feature_data = self.scaler.transform(feature_data)
                     
+                    # Apply weight after scaling
+                    feature_data = feature_data * weight
+                    
                     feature_df = pd.DataFrame(feature_data, columns=[col], index=df_features.index)
                     processed_features.append(feature_df)
                     feature_names.append(col)
 
-            
         # Process categorical features
         for col in categorical_cols:
             if col in df_features.columns:
+                weight = self.feature_weights.get(col, 1.0)
+                
                 encoded = pd.get_dummies(df_features[col], prefix=col)
+                
+                # Apply weight to categorical features
+                encoded = encoded * weight
+                
                 processed_features.append(encoded)
                 feature_names.extend(encoded.columns.tolist())
-        
 
         # Combine all features
         if processed_features:
@@ -112,22 +206,36 @@ class ContentBasedFilter:
             logger.warning("No features found to process")
             final_features = pd.DataFrame({'id': item_ids})
 
-        logger.info(f"Processed {len(final_features.columns)-1} features for {len(final_features)} items")
+        logger.info(f"Processed {len(final_features.columns)-1} weighted features for {len(final_features)} items")
+        logger.info(f"Applied feature weights: {self.feature_weights}")
+        
         return final_features
-    
+
+
 
     def _get_period_index(self, year: int) -> int: # must update
         """Convert publish year to literature period index (reuse your logic)"""
-        if year < 1800:
-            return 0
-        elif year < 1900:
-            return 1
-        elif year < 1950:
-            return 2
-        elif year < 2000:
-            return 3
-        else:
-            return 4
+        period_boundaries = [
+            -500,  # Ancient Literature starts (before 500 CE)
+            500,   # Medieval Literature starts
+            1450,  # Renaissance starts
+            1660,  # Enlightenment/Neoclassical starts
+            1790,  # Romantic Period starts
+            1850,  # Victorian/Realist starts
+            1900,  # Modernist starts
+            1945,  # Post-War/Mid-Century starts
+            1970,  # Postmodern starts
+            2000,  # Contemporary starts
+            float('inf')  # End boundary
+        ]
+
+        for idx in range(0, len(period_boundaries)):
+            period_boundary = period_boundaries[idx]
+            if year <= period_boundary:
+                return idx
+                break
+        
+        return len(period_boundaries) - 1
 
     def _compute_similarity_batch(self, features_matrix: np.ndarray,
                                   batch_size: int = 1000) -> Dict[int, List[Tuple[int, float]]]:
@@ -300,44 +408,3 @@ class ContentBasedFilter:
         
         if len(matches) >= 1:
             return matches.iloc[0]['name']
-
-    
-    # def recommend_based_on_profile(self, user_profile: List[Tuple[int, float]], 
-    #                               top_k: int = 10, exclude_items: Optional[List[int]] = None) -> List[Tuple[int, float]]:
-    #     """
-    #     Recommend items based on user's item profile (items they've interacted with)
-        
-    #     Args:
-    #         user_profile: List of (item_id, rating/weight) tuples representing user preferences
-    #         top_k: Number of recommendations to return
-    #         exclude_items: Items to exclude from recommendations
-            
-    #     Returns:
-    #         List of (item_id, predicted_score) tuples
-    #     """
-    #     if not self.is_fitted:
-    #         raise ValueError("Model must be fitted before making recommendations")
-        
-    #     if not user_profile:
-    #         return []
-        
-    #     exclude_items = exclude_items or []
-    #     item_scores = {}
-        
-    #     # For each item in user's profile
-    #     for item_id, user_rating in user_profile:
-    #         if item_id in self.similarity_matrix:
-    #             similar_items = self.similarity_matrix[item_id]
-                
-    #             # Weight similar items by user's rating and similarity score
-    #             for similar_item_id, similarity_score in similar_items:
-    #                 if similar_item_id not in exclude_items:
-    #                     if similar_item_id not in item_scores:
-    #                         item_scores[similar_item_id] = 0
-                        
-    #                     # Weighted score: user_rating * similarity_score
-    #                     item_scores[similar_item_id] += user_rating * similarity_score
-        
-    #     # Sort by predicted score and return top-k
-    #     recommendations = sorted(item_scores.items(), key=lambda x: x[1], reverse=True)
-    #     return recommendations[:top_k]

@@ -15,6 +15,7 @@ from utils.progressline import progress_bar
 
 from CollaborativeFilter import CollaborativeFilter, TrainingConfig
 from ContentBased import ContentBasedConfig, ContentBasedFilter
+from dataclasses import dataclass
 
 import logging
 
@@ -26,7 +27,8 @@ class BookRecommender():
         self.scaler = MinMaxScaler()
 
     def fit(self):
-        self.fit_collaborative()
+        # don't use collaborative filtering as we don't have any users in reallity
+        # self.fit_collaborative()
 
         self.fit_contentbased()
 
@@ -58,37 +60,57 @@ class BookRecommender():
         del books_df
 
     def load_models(self):
-        cf_config = TrainingConfig(max_iterations=1000)
-        self.cf_model = CollaborativeFilter(cf_config)
+        # don't use collaborative filtering as we don't have any users in reallity
+        # cf_config = TrainingConfig(max_iterations=1000)
+        # self.cf_model = CollaborativeFilter(cf_config)
         cb_config = ContentBasedConfig()
         self.cb_model = ContentBasedFilter(cb_config)
-        self.cf_model.load_model()
+        # self.cf_model.load_model()
         self.cb_model.load_model()
-
+    
     def _run_console_api(self):
-        if not self.cf_model.is_fitted or not self.cb_model.is_fitted:
+        if not self.cb_model.is_fitted:
             logger.info("Please train or load a model first")
             return
 
         books_df = pd.read_csv("dataset/books.csv")
-        ratings_df = pd.read_csv("dataset/ratings.csv")
-        
+
+        # don't use collaborative filtering as we don't have any users in reallity
+        # ratings_df = pd.read_csv("dataset/ratings.csv")
+        num = 1
+        fav_books = []
+        print("> Please Enter your favorite books. (hit enter after each book, use (/q) when you wrote all books)")
         while True:
-            what_to_do = input("what do you want me to do? (provide recommendations: 1, show similar books to books you read: 2): ")
-            if what_to_do == "2":
-                what_book_name = input("please enter the name of the book: ")
-                books_id = self.cb_model._get_book_id(what_book_name, books_df=books_df)
-                similars = self.cb_model.get_similar_items(item_id=books_id, top_k=10)
-                number = 1
-                for id, score in similars:
-                    book_name = self.cb_model._get_book_name(id, books_df=books_df)
-                    print(f"{number}: {book_name}")
-                    number += 1
+            fav_book = input(f"{num}: ")
+            if fav_book == "/q":
+                if len(fav_books) >= 0:
+                    all_similars = []
+                    for fav in fav_books:
+                        books_id = self.cb_model._get_book_id(fav, books_df=books_df)
+                        similars = self.cb_model.get_similar_items(item_id=books_id, top_k=10)
+                        all_similars.extend(similars)
+
+                    all_similars.sort(key=lambda x: x[1], reverse=True)
+
+                    # take only top-k
+                    all_similars = all_similars[0:self.cb_model.config.top_k_similar]
+
+                    number = 1
+                    print("You Can Read These Books Next: ")
+                    for id, score in all_similars:
+                        book_name = self.cb_model._get_book_name(id, books_df=books_df)
+                        print(f"{number}: {book_name} | ({(score  * 100)}% Similar)")
+                        number += 1
+                fav_books = []
+                num = 1
+                print("> Please Enter your favorite books. (hit enter after each book, use (/q) when you wrote all books)")
             else:
-                continue
+                fav_books.append(fav_book)
+                num += 1
 
 if __name__=="__main__":
     recommender = BookRecommender()
+    # recommender.fit()
     recommender.load_models()
     recommender._run_console_api()
 
