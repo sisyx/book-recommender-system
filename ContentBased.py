@@ -2,12 +2,12 @@ import pandas as pd
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from sklearn.metrics.pairwise import cosine_similarity, pairwise_distances
-from scipy.sparse import csr_matrix
-from typing import Dict, List, Tuple, Optional, Union
+from typing import Dict, List, Tuple, Optional
 import logging
 from dataclasses import dataclass
 import joblib
 import os
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ class ContentBasedConfig:
     batch_size: int = 1000
     # use_sparse: bool = True
     scaler_type: str = "minmax"  # minmax, standard, none
-    save_path: str = "models/cb.joblib"
+    save_path: str = Path(__file__).resolve().parent / "models/cb.joblib"
 
 
 class ContentBasedFilter:
@@ -39,82 +39,6 @@ class ContentBasedFilter:
             self.scaler = StandardScaler()
         else:
             self.scaler = None
-
-    # def _prepare_features(self, books_df: pd.DataFrame) -> pd.DataFrame:
-    #     """
-    #     prepare and encode features for similarity computation
-
-    #     Args:
-    #         books_df: dataframe with book features
-
-    #     Returns:
-    #         Processes features dataframe
-    #     """
-    #     logger.info("Preparing content-based features...")
-
-
-    #     # Create a copy to avoid modifying original
-    #     df: pd.DataFrame = books_df.copy()
-
-    #     logger.info(df.head())
-
-    #     # handle missing values
-    #     df = df.fillna(0)
-
-    #     # Separate numerical and categorical features
-    #     numerical_cols = ['rating', 'publish_year', 'counts_of_review', "rating_dist_total"]
-    #     categorical_cols = ['language']
-
-    #     # Keep ID column separate
-    #     item_ids = df["id"].copy()
-    #     df_features = df.drop(columns=["id"])
-
-    #     processed_features = []
-    #     feature_names = []
-
-    #     # Process numerical features
-
-    #     for col in numerical_cols:
-    #         if col in df_features.columns:
-    #             if col == "publish_year":
-    #                 df_features[f"{col}_period"] = df_features[col].apply(self._get_period_index)
-    #                 # One-hot encode periods
-    #                 period_encoded = pd.get_dummies(df_features[f'{col}_period'], prefix='period')
-    #                 processed_features.append(period_encoded)
-    #                 feature_names.extend(period_encoded.columns.tolist())
-    #             else:
-    #                 # Scale numerical features
-    #                 feature_data = df_features[[col]].values
-    #                 if self.scaler is not None:
-    #                     if not hasattr(self.scaler, 'scale_'):  # Not fitted yet
-    #                         feature_data = self.scaler.fit_transform(feature_data)
-    #                     else:
-    #                         feature_data = self.scaler.transform(feature_data)
-                    
-    #                 feature_df = pd.DataFrame(feature_data, columns=[col], index=df_features.index)
-    #                 processed_features.append(feature_df)
-    #                 feature_names.append(col)
-
-            
-    #     # Process categorical features
-    #     for col in categorical_cols:
-    #         if col in df_features.columns:
-    #             encoded = pd.get_dummies(df_features[col], prefix=col)
-    #             processed_features.append(encoded)
-    #             feature_names.extend(encoded.columns.tolist())
-        
-
-    #     # Combine all features
-    #     if processed_features:
-    #         final_features = pd.concat(processed_features, axis=1)
-    #         final_features['id'] = item_ids
-    #     else:
-    #         logger.warning("No features found to process")
-    #         final_features = pd.DataFrame({'id': item_ids})
-
-    #     logger.info(f"Processed {len(final_features.columns)-1} features for {len(final_features)} items")
-    #     return final_features
-    
 
     def _prepare_features(self, books_df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -402,7 +326,14 @@ class ContentBasedFilter:
         
         if len(exact_matches) >= 1:
             return exact_matches.iloc[0]['id']
-    
+
+    def _get_book_isbn(self, book_id: str, books_df: pd.DataFrame) -> int:
+        matches = books_df[books_df['id'] == book_id]
+        
+        isbn = matches.iloc[0]['isbn']
+        if pd.isna(isbn): return 0
+        else: return isbn
+
     def _get_book_name(self, book_id: str, books_df: pd.DataFrame) -> int:
         matches = books_df[books_df['id'] == book_id]
         

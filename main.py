@@ -3,15 +3,12 @@ import pandas as pd
 import numpy as np
 
 # import preprocessing tools
-from sklearn.preprocessing import MinMaxScaler, OneHotEncoder
-from sklearn.metrics.pairwise import pairwise_distances
+from sklearn.preprocessing import MinMaxScaler
 
-# import garbage collection for memory effiency
-import gc
-
-from CollaborativeFilter import CollaborativeFilter, TrainingConfig
+# from CollaborativeFilter import CollaborativeFilter, TrainingConfig
 from ContentBased import ContentBasedConfig, ContentBasedFilter
 from dataclasses import dataclass
+from pathlib import Path
 
 import logging
 
@@ -32,47 +29,57 @@ class BookRecommender():
         config = TrainingConfig(max_iterations=1000)
         self.cf_model = CollaborativeFilter(config)
 
-        # Load ratings data (fix the column name issue)
-        ratings_df = pd.read_csv("dataset/ratings.csv")
-
         # Train the model
 
-        self.cf_model.fit(ratings_df)
+        self.cf_model.fit(self.ratings_df)
 
         self.cf_model.save()
-
-        del ratings_df
 
     def fit_contentbased(self):
         config = ContentBasedConfig()
         self.cb_model = ContentBasedFilter(config)
-        
-        books_df = pd.read_csv("dataset/books.csv")
 
-        self.cb_model.fit(books_df)
+        self.cb_model.fit(self.books_df)
 
         self.cb_model.save()
-        
-        del books_df
 
     def load_models(self):
+        self.books_df = pd.read_csv(Path(__file__).resolve().parent / "dataset/books.csv")
         # don't use collaborative filtering as we don't have any users in reallity
+        # self.ratings_df = pd.read_csv(Path(__file__).resolve().parent / "dataset/ratings.csv")
         # cf_config = TrainingConfig(max_iterations=1000)
         # self.cf_model = CollaborativeFilter(cf_config)
         cb_config = ContentBasedConfig()
         self.cb_model = ContentBasedFilter(cb_config)
         # self.cf_model.load_model()
         self.cb_model.load_model()
+
+    def _similar_books__name(self, book_titles: list[str] = []):
+        all_similars = []
+        for fav in book_titles:
+            books_id = self.cb_model._get_book_id(fav, books_df=self.books_df)
+            similars = self.cb_model.get_similar_items(item_id=books_id, top_k=10)
+            all_similars.extend(similars)
+
+        all_similars.sort(key=lambda x: x[1], reverse=True)
+
+        # take only top-k
+        all_similars = all_similars[0:self.cb_model.config.top_k_similar]
+
+        result = []
+        for id, score in all_similars:
+            book_name = self.cb_model._get_book_name(id, books_df=self.books_df)
+            book_isbn = self.cb_model._get_book_isbn(id, books_df=self.books_df)
+            result.append({"name": book_name, "isbn": book_isbn})
+            
+        return result
     
     def _run_console_api(self):
         if not self.cb_model.is_fitted:
             logger.info("Please train or load a model first")
             return
 
-        books_df = pd.read_csv("dataset/books.csv")
-
         # don't use collaborative filtering as we don't have any users in reallity
-        # ratings_df = pd.read_csv("dataset/ratings.csv")
         num = 1
         fav_books = []
         print("> Please Enter your favorite books. (hit enter after each book, use (/q) when you wrote all books)")
@@ -82,7 +89,7 @@ class BookRecommender():
                 if len(fav_books) >= 0:
                     all_similars = []
                     for fav in fav_books:
-                        books_id = self.cb_model._get_book_id(fav, books_df=books_df)
+                        books_id = self.cb_model._get_book_id(fav, books_df=self.books_df)
                         similars = self.cb_model.get_similar_items(item_id=books_id, top_k=10)
                         all_similars.extend(similars)
 
@@ -94,7 +101,7 @@ class BookRecommender():
                     number = 1
                     print("You Can Read These Books Next: ")
                     for id, score in all_similars:
-                        book_name = self.cb_model._get_book_name(id, books_df=books_df)
+                        book_name = self.cb_model._get_book_name(id, books_df=self.books_df)
                         print(f"{number}: {book_name} | ({(score  * 100)}% Similar)")
                         number += 1
                 fav_books = []
@@ -109,12 +116,3 @@ if __name__=="__main__":
     # recommender.fit()
     recommender.load_models()
     recommender._run_console_api()
-
-    # prediction = recommender.cf_model.predict(user_id=1, item_id=1316509)
-    
-    # Get recommendations
-    # recommendations = recommender.cf_model.recommend_for_user(user_id=123, n_recommendations=10)
-    
-    # print("Collaborative filtering implementation is ready!")
-
-    # print(recommendations)

@@ -19,5 +19,5 @@ from django.urls import path
 from .views import get_recs
 
 urlpatterns = [
-    path('api/recommendations/', get_recs, name="get_recommendations"),
+    path('api/recommendations', get_recs, name="get_recommendations"),
 ]

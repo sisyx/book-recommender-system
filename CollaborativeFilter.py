@@ -1,14 +1,11 @@
 import pandas as pd
 import numpy as np
-import sqlalchemy as sa
-from sqlalchemy.orm import sessionmaker
-from sklearn.preprocessing import MinMaxScaler
-from scipy.sparse import csr_matrix
 from typing import Dict, List, Tuple, Optional
 import logging
 from dataclasses import dataclass
 import joblib
 import os
+from pathlib import Path
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -27,7 +24,7 @@ class TrainingConfig:
     min_improvement: float = 1e-4
     learning_rate_decay: float = 0.95  # Learning rate decay
     decay_every: int = 50  # Decay every 50 epochs
-    save_path: str = "models/cf.joblib"
+    save_path: str = Path(__file__).resolve().parent / "models/cf.joblib"
 
 class CollaborativeFilter:
     """
